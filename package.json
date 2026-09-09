@@ -1,0 +1,21 @@
+{
+  "name": "shopeepay-gateway-oss",
+  "version": "1.0.0",
+  "description": "Open source stateless ShopeePay Partner API Gateway (unofficial) — Bun + ElysiaJS",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "^1.4.0",
+    "elysia": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}
