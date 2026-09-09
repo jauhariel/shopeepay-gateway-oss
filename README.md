@@ -121,12 +121,80 @@ Karena gateway stateless, dua pelanggan dengan nominal sama persis berisiko *dou
 
 ---
 
-## 🚀 Deployment
+## 🚀 Deployment (24 Jam di VPS)
 
-Karena berjalan di Bun, pastikan platform target mendukung Bun:
+### Persiapan (semua opsi)
 
-* **VPS (PM2/systemd)** — `bun run start`, atau compile ke single binary: `bun build --compile src/index.ts --outfile server` lalu jalankan `./server` tanpa perlu instal runtime apapun.
-* **Railway / Render** — set build command `bun install` dan start command `bun run start`, lalu isi semua environment variable sesuai `.env.example`.
+```bash
+# Install Bun
+curl -fsSL https://bun.sh/install | bash
+source ~/.bashrc
+
+# Upload project & isi env
+cd /opt/shopeepay-gateway-oss
+bun install
+cp .env.example .env
+nano .env   # isi SHOPEE_TOKEN, API_KEY, QRIS_STATIC asli
+```
+
+### Opsi A: systemd (paling ringan, tanpa Node sama sekali)
+
+```bash
+sudo nano /etc/systemd/system/shopeepay-gateway.service
+```
+
+```ini
+[Unit]
+Description=ShopeePay Gateway OSS
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/shopeepay-gateway-oss
+ExecStart=/root/.bun/bin/bun run src/index.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now shopeepay-gateway   # jalan sekarang + otomatis saat reboot
+sudo systemctl status shopeepay-gateway
+journalctl -u shopeepay-gateway -f              # pantau log live
+```
+
+### Opsi B: PM2 (perlu Node untuk menjalankan PM2-nya saja)
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo npm install -g pm2
+
+cd /opt/shopeepay-gateway-oss
+pm2 start "bun run src/index.ts" --name shopeepay-gateway
+
+# atau via single binary (PM2 tidak perlu tahu soal Bun):
+bun build --compile src/index.ts --outfile server
+pm2 start ./server --name shopeepay-gateway
+
+pm2 startup   # jalankan perintah yang muncul agar auto-start saat reboot
+pm2 save
+```
+
+Perintah operasional: `pm2 status`, `pm2 logs shopeepay-gateway`, `pm2 restart shopeepay-gateway`, `pm2 monit`.
+
+### Opsi C: Platform PaaS (Railway / Render)
+
+Set build command `bun install` dan start command `bun run start`, lalu isi semua environment variable sesuai `.env.example`.
+
+### HTTPS (direkomendasikan untuk produksi)
+
+Pasang Nginx reverse proxy + SSL gratis (Certbot), arahkan `proxy_pass` ke `http://localhost:4000`. HTTPS penting karena `X-API-Key` dan token ikut terkirim di setiap request.
+
+> **Catatan stateless:** restart tidak menghilangkan data apa pun kecuali memori dedup 24 jam — selalu terapkan dedup kedua di database toko kamu (lihat bagian Penanganan Kolisi).
 
 ---
 
