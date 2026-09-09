@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
+import QRCode from "qrcode";
 import { config, state } from "./config";
 import { logEvent, getLogs } from "./lib/logger";
 import { generateDynamicQRIS } from "./lib/qris";
@@ -292,8 +293,8 @@ export const app = new Elysia()
     timestamp: new Date().toISOString(),
   }))
 
-  // Publik: redirect ke gambar QR (untuk ditampilkan ke pelanggan)
-  .get("/qr/:id", ({ params, set }) => {
+  // Publik: render gambar QR langsung di server (untuk ditampilkan ke pelanggan)
+  .get("/qr/:id", async ({ params, set }) => {
     const entry = state.qrisStore.get(params.id);
     if (!entry) {
       set.status = 404;
@@ -304,8 +305,15 @@ export const app = new Elysia()
       set.status = 410;
       return "QR expired";
     }
-    set.status = 302;
-    set.headers["Location"] = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(entry.data)}`;
+    try {
+      const png = await QRCode.toBuffer(entry.data, { width: 300, margin: 2 });
+      set.headers["Content-Type"] = "image/png";
+      set.headers["Cache-Control"] = "no-store";
+      return new Uint8Array(png);
+    } catch (err) {
+      set.status = 500;
+      return { success: false, error: (err as Error).message };
+    }
   })
 
   .use(protectedRoutes);

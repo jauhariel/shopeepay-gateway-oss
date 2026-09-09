@@ -14,3 +14,11 @@ export const state = {
   /** id -> { data, expiresAt } untuk QRIS dinamis yang sudah dibuat */
   qrisStore: new Map<string, { data: string; expiresAt: number }>(),
 };
+
+// Bersihkan QRIS kedaluwarsa tiap menit agar Map tidak membengkak
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of state.qrisStore) {
+    if (now > entry.expiresAt) state.qrisStore.delete(id);
+  }
+}, 60 * 1000).unref();

@@ -125,7 +125,7 @@ describe("token management", () => {
 });
 
 describe("QRIS dinamis", () => {
-  test("POST /create-qris membuat QR dan /qr/:id me-redirect 302", async () => {
+  test("POST /create-qris membuat QR dan /qr/:id mengembalikan PNG", async () => {
     const res = await post("/create-qris", { amount: 25000 }, KEY);
     const body = await jsonOf(res);
     expect(res.status).toBe(200);
@@ -135,11 +135,11 @@ describe("QRIS dinamis", () => {
 
     const id = body.data.qris_url.split("/qr/")[1];
     const qrRes = await get(`/qr/${id}`);
-    expect(qrRes.status).toBe(302);
-    const location = qrRes.headers.get("Location")!;
-    expect(location).toContain("api.qrserver.com");
-    // Nominal harus terinjeksi ke payload QRIS (Tag 54, panjang 5)
-    expect(decodeURIComponent(location)).toContain("540525000");
+    expect(qrRes.status).toBe(200);
+    expect(qrRes.headers.get("Content-Type")).toContain("image/png");
+    // Magic number PNG: 89 50 4E 47 (‰PNG)
+    const bytes = new Uint8Array(await qrRes.arrayBuffer());
+    expect([...bytes.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
   });
 
   test("POST /create-qris dengan nominal tidak valid ditolak 400", async () => {

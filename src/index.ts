@@ -11,7 +11,7 @@ console.log("  GET  /api/health         - Health check");
 console.log("  POST /update-token       - Update ShopeeToken");
 console.log("  GET  /token-status       - Check ShopeeToken validity");
 console.log("  POST /create-qris        - Generate dynamic QRIS");
-console.log("  GET  /qr/:id             - QR image redirect (public)");
+console.log("  GET  /qr/:id             - QR image PNG (public)");
 console.log("  GET  /transactions       - Latest transactions");
 console.log("  GET  /transactions/all   - Full month transactions");
 console.log("  POST /check-payment      - Stateless payment verification");

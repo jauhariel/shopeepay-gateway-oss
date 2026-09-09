@@ -86,7 +86,7 @@ Endpoint terproteksi mewajibkan header `X-API-Key: <API_KEY>` atau query `?api_k
 | `POST` | `/update-token` | ✅ | Perbarui Shopee token in-memory — body: `{ "token": "B:..." }` |
 | `GET` | `/token-status` | ✅ | Status validitas token saat ini |
 | `POST` | `/create-qris` | ✅ | Generate QRIS dinamis — body: `{ "amount": 15000 }` |
-| `GET` | `/qr/:id` | Tidak | Redirect 302 ke gambar QR (untuk pelanggan) |
+| `GET` | `/qr/:id` | Tidak | Gambar QR dalam format PNG, dirender langsung di server (untuk pelanggan) |
 | `GET` | `/transactions` | ✅ | Mutasi terbaru — query: `startTime`, `endTime`, `pageSize`, `next_position` |
 | `GET` | `/transactions/all` | ✅ | Semua mutasi bulan berjalan (auto-paginasi) |
 | `POST` | `/check-payment` | ✅ | Verifikasi pembayaran stateless — body: `{ "amount": 1008, "startTime": 1784050000 }` |
