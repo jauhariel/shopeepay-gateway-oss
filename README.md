@@ -42,7 +42,7 @@ API Gateway **open source**, ringan, dan **100% Stateless (tanpa database & tanp
 Prasyarat: [Bun](https://bun.sh) >= 1.4.
 
 ```bash
-git clone <repo-kamu>
+git clone https://github.com/jauhariel/shopeepay-gateway-oss.git
 cd shopeepay-gateway-oss
 bun install
 cp .env.example .env   # lalu isi nilainya
