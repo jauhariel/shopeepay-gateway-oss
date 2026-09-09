@@ -149,6 +149,14 @@ describe("QRIS dinamis", () => {
       expect((await jsonOf(res)).success).toBe(false);
     }
   });
+
+  test("POST /create-qris menerima nominal sebagai string angka", async () => {
+    const res = await post("/create-qris", { amount: "15000" }, KEY);
+    const body = await jsonOf(res);
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.amount).toBe(15000);
+  });
 });
 
 describe("check-payment (mock ShopeePay)", () => {

@@ -86,7 +86,8 @@ const protectedRoutes = new Elysia()
       return { success: false, error: (err as Error).message };
     }
   }, {
-    body: t.Object({ amount: t.Number({ minimum: 1 }) }),
+    // Numeric: terima number maupun string angka ("15000") seperti versi Express lama
+    body: t.Object({ amount: t.Numeric({ minimum: 1 }) }),
   })
 
   .get("/transactions", async ({ query, request, set }) => {
@@ -260,7 +261,7 @@ const protectedRoutes = new Elysia()
     }
   }, {
     body: t.Object({
-      amount: t.Number({ minimum: 1 }),
+      amount: t.Numeric({ minimum: 1 }),
       startTime: t.Optional(t.Numeric()),
     }),
   })
