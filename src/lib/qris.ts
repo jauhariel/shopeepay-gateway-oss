@@ -1,6 +1,6 @@
 type TlvField = [tag: string, value: string];
 
-function parseTLV(data: string): TlvField[] {
+export function parseTLV(data: string): TlvField[] {
   const result: TlvField[] = [];
   let i = 0;
   while (i < data.length) {
@@ -16,7 +16,7 @@ function parseTLV(data: string): TlvField[] {
   return result;
 }
 
-function buildTLV(fields: TlvField[]): string {
+export function buildTLV(fields: TlvField[]): string {
   let res = "";
   for (const [tag, val] of fields) {
     res += tag + String(val.length).padStart(2, "0") + val;
@@ -24,7 +24,7 @@ function buildTLV(fields: TlvField[]): string {
   return res;
 }
 
-function crc16CCITT(data: string): string {
+export function crc16CCITT(data: string): string {
   let crc = 0xffff;
   for (let i = 0; i < data.length; i++) {
     crc ^= data.charCodeAt(i) << 8;

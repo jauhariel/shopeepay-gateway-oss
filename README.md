@@ -49,7 +49,10 @@ cp .env.example .env   # lalu isi nilainya
 bun run dev            # development (hot reload)
 bun run start          # production
 bun run typecheck      # cek tipe TypeScript
+bun test               # jalankan test suite (40 test: unit + integrasi)
 ```
+
+Test memakai runner bawaan Bun — tanpa dependency tambahan. Environment test di-set otomatis lewat `bunfig.toml` → `tests/preload.ts`, dan panggilan ke API ShopeePay di-mock sehingga test berjalan offline.
 
 ## ⚙️ Konfigurasi Environment (`.env`)
 
@@ -131,7 +134,8 @@ Karena berjalan di Bun, pastikan platform target mendukung Bun:
 
 ```
 src/
-├── index.ts            # Entry point Elysia + seluruh route
+├── index.ts            # Entry point: listen + token checker
+├── app.ts              # Definisi app Elysia & seluruh route (dipakai juga oleh test)
 ├── config.ts           # Konfigurasi env & runtime state
 └── lib/
     ├── shopee.ts       # HTTP client ShopeePay Partner API (fetch native)
@@ -140,6 +144,11 @@ src/
     ├── token-checker.ts# Validator token berkala (5 menit)
     ├── dedup.ts        # Anti double-claim (TTL 24 jam)
     └── logger.ts       # Circular log in-memory
+tests/
+├── preload.ts          # Environment khusus test
+├── qris.test.ts        # Unit test TLV, CRC16, QRIS dinamis
+├── helpers.test.ts     # Unit test formatter, dedup, logger
+└── app.test.ts         # Test integrasi endpoint via app.handle() (ShopeePay di-mock)
 ```
 
 ## 🔒 Lisensi
