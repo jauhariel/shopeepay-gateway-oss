@@ -49,7 +49,7 @@ cp .env.example .env   # lalu isi nilainya
 bun run dev            # development (hot reload)
 bun run start          # production
 bun run typecheck      # cek tipe TypeScript
-bun test               # jalankan test suite (40 test: unit + integrasi)
+bun test               # jalankan test suite (52 test: unit + integrasi)
 ```
 
 Test memakai runner bawaan Bun — tanpa dependency tambahan. Environment test di-set otomatis lewat `bunfig.toml` → `tests/preload.ts`, dan panggilan ke API ShopeePay di-mock sehingga test berjalan offline.
@@ -89,6 +89,7 @@ Endpoint terproteksi mewajibkan header `X-API-Key: <API_KEY>` atau query `?api_k
 | `GET` | `/qr/:id` | Tidak | Gambar QR dalam format PNG, dirender langsung di server (untuk pelanggan) |
 | `GET` | `/transactions` | ✅ | Mutasi terbaru — query: `startTime`, `endTime`, `pageSize`, `next_position` |
 | `GET` | `/transactions/all` | ✅ | Semua mutasi bulan berjalan (auto-paginasi) |
+| `GET` | `/notifications` | ✅ | Notifikasi partner portal (real-time) — query: `cursor`, `limit` |
 | `POST` | `/check-payment` | ✅ | Verifikasi pembayaran stateless — body: `{ "amount": 1008, "startTime": 1784050000 }` |
 | `GET` | `/api/logs` | ✅ | 100 log terakhir (in-memory) |
 
@@ -100,6 +101,7 @@ Header opsional `X-Shopee-Token: B:...` dapat dikirim pada endpoint pembacaan da
 {
   "success": true,
   "paid": true,
+  "source": "notification",
   "transaction": {
     "transactionId": "264693445089687719",
     "amount": 1008,
@@ -109,6 +111,12 @@ Header opsional `X-Shopee-Token: B:...` dapat dikirim pada endpoint pembacaan da
   }
 }
 ```
+
+### ⚡ Sumber Real-Time via Notifikasi Portal
+
+`POST /check-payment` tidak hanya mengandalkan `get-transaction-list` (yang terkenal **delay** indexing beberapa menit). Gateway mengecek dulu **API notifikasi partner portal** (`partner.shopee.co.id/notifications`) yang masuk **real-time** begitu pembayaran diterima, lalu fallback ke transaction list bila notifikasi gagal/tidak ditemukan. Respon berhasilcek menandai sumber yang dipakai di field `source` (`"notification"` | `"transaction"`/absent untuk fallback).
+
+Field `source` hanya disertakan saat terdeteksi dari notifikasi; hasil fallback transaction list mempertahankan format lama (dengan `issuer` via detail transaksi).
 
 ---
 
@@ -206,7 +214,7 @@ src/
 ├── app.ts              # Definisi app Elysia & seluruh route (dipakai juga oleh test)
 ├── config.ts           # Konfigurasi env & runtime state
 └── lib/
-    ├── shopee.ts       # HTTP client ShopeePay Partner API (fetch native)
+    ├── shopee.ts       # HTTP client ShopeePay Partner API + API notifikasi (fetch native)
     ├── qris.ts         # Parser TLV EMVCo + CRC16-CCITT
     ├── telegram.ts     # Notifikasi Bot Telegram
     ├── token-checker.ts# Validator token berkala (5 menit)

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseAmount, formatTransaction, toWIB } from "../src/lib/shopee";
+import { parseAmount, formatTransaction, toWIB, parsePaymentNotification } from "../src/lib/shopee";
 import { claim, isClaimed } from "../src/lib/dedup";
 import { logEvent, getLogs } from "../src/lib/logger";
 
@@ -49,6 +49,48 @@ describe("formatTransaction & toWIB", () => {
       status: "success",
       time: "1970-01-01 07:00:00",
     });
+  });
+});
+
+describe("parsePaymentNotification", () => {
+  const base = {
+    actionId: "act-1",
+    content: "A payment of <b>Rp2.786</b> has been received. Ref: <b>103230502239354928</b>.",
+    createTime: 1790759376,
+    actionType: 1219,
+    unreadStatus: 1,
+    pcRedirectUrl:
+      "https://partner.shopee.co.id/transactions?transactionId=103230502239354928&utm_medium=notification",
+  };
+
+  test("notifikasi pembayaran diparse jadi transaksi", () => {
+    const p = parsePaymentNotification({
+      ...base,
+      title: "Payment of Rp2.786 received",
+    });
+    expect(p).not.toBeNull();
+    expect(p!.transactionId).toBe("103230502239354928");
+    expect(p!.amount).toBe(2786);
+    expect(p!.createTime).toBe(1790759376);
+    expect(p!.source).toBe("notification");
+  });
+
+  test("nominal dengan pemisah ribuan diparse benar", () => {
+    const p = parsePaymentNotification({
+      ...base,
+      title: "Pembayaran sebesar Rp1.234.567 diterima",
+    });
+    expect(p!.amount).toBe(1234567);
+  });
+
+  test("bukan notifikasi pembayaran (actionType lain) -> null", () => {
+    expect(parsePaymentNotification({ ...base, title: "Payout diproses", actionType: 1300 })).toBeNull();
+  });
+
+  test("tanpa transactionId di URL -> null", () => {
+    expect(
+      parsePaymentNotification({ ...base, title: "Payment of Rp100 received", pcRedirectUrl: "https://partner.shopee.co.id/x" }),
+    ).toBeNull();
   });
 });
 

@@ -44,6 +44,38 @@ function mockShopee(list: unknown[], detail?: unknown) {
   });
 }
 
+function mockNotifications(list: unknown[], fail = false) {
+  globalThis.fetch = asFetch(async (input) => {
+    const url = String(input);
+    if (url.includes("GetNotificationList")) {
+      const json = fail
+        ? { code: 99000000, msg: "notification api down" }
+        : { data: { list, cursor: "999" } };
+      return new Response(JSON.stringify(json), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const json = url.includes("get-transaction-detail")
+      ? { code: 0, data: { issuer: "OVO" } }
+      : { code: 0, data: { list: [], totalNetSales: "0" } };
+    return new Response(JSON.stringify(json), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+}
+
+const paymentNotif = (amount: string, txId: string, createTime: number) => ({
+  actionId: `act-${txId}`,
+  title: `Payment of Rp${amount} received`,
+  content: `A payment of <b>Rp${amount}</b> has been received. Ref: <b>${txId}</b>.`,
+  createTime,
+  actionType: 1219,
+  unreadStatus: 1,
+  pcRedirectUrl: `https://partner.shopee.co.id/transactions?transactionId=${txId}&utm_medium=notification`,
+});
+
 afterEach(() => {
   globalThis.fetch = realFetch;
 });
@@ -162,6 +194,62 @@ describe("QRIS dinamis", () => {
 describe("check-payment (mock ShopeePay)", () => {
   const nowSec = () => Math.floor(Date.now() / 1000);
 
+  test("pembayaran terdeteksi dari notifikasi real-time", async () => {
+    mockNotifications([paymentNotif("2.786", "notif-tx-1", nowSec() - 10)]);
+    const res = await post("/check-payment", { amount: 2786 }, KEY);
+    const body = await jsonOf(res);
+    expect(res.status).toBe(200);
+    expect(body.paid).toBe(true);
+    expect(body.source).toBe("notification");
+    expect(body.transaction.transactionId).toBe("notif-tx-1");
+    expect(body.transaction.amount).toBe(2786);
+    expect(body.transaction.status).toBe("success");
+  });
+
+  test("notifikasi tanpa nominal cocok, fallback ke transaction list", async () => {
+    mockNotifications([paymentNotif("1.000", "notif-tx-2", nowSec() - 10)]);
+    mockShopee([
+      { transactionId: "tx-list-fb", amount: "2.000", status: 3, createTime: nowSec() - 10 },
+    ]);
+    const res = await post("/check-payment", { amount: 2000 }, KEY);
+    const body = await jsonOf(res);
+    expect(res.status).toBe(200);
+    expect(body.paid).toBe(true);
+    expect(body.transaction.transactionId).toBe("tx-list-fb");
+  });
+
+  test("API notifikasi gagal, fallback ke transaction list tetap jalan", async () => {
+    mockNotifications([], true);
+    mockShopee([
+      { transactionId: "tx-fallback", amount: "5.500", status: 3, createTime: nowSec() - 10 },
+    ]);
+    const res = await post("/check-payment", { amount: 5500 }, KEY);
+    const body = await jsonOf(res);
+    expect(res.status).toBe(200);
+    expect(body.paid).toBe(true);
+    expect(body.transaction.transactionId).toBe("tx-fallback");
+  });
+
+  test("notifikasi yang sudah diklaim tidak terklaim dua kali", async () => {
+    mockNotifications([paymentNotif("3.000", "notif-claimed", nowSec() - 10)]);
+    const first = await post("/check-payment", { amount: 3000 }, KEY);
+    expect((await jsonOf(first)).paid).toBe(true);
+    const second = await post("/check-payment", { amount: 3000 }, KEY);
+    expect((await jsonOf(second)).paid).toBe(false);
+  });
+
+  test("notifikasi sebelum startTime diabaikan", async () => {
+    mockNotifications([paymentNotif("4.000", "notif-old", nowSec() - 7200)]);
+    const res = await post(
+      "/check-payment",
+      { amount: 4000, startTime: nowSec() - 60 },
+      KEY,
+    );
+    const body = await jsonOf(res);
+    expect(res.status).toBe(200);
+    expect(body.paid).toBe(false);
+  });
+
   test("transaksi cocok mengembalikan paid: true beserta issuer", async () => {
     mockShopee([
       { transactionId: "tx-paid-1", amount: "1.008", status: 3, createTime: nowSec() - 10 },
@@ -223,6 +311,41 @@ describe("check-payment (mock ShopeePay)", () => {
     const res = await post("/check-payment", { amount: 1000 }, KEY);
     expect(res.status).toBe(400);
     expect((await jsonOf(res)).error).toBe("invalid token");
+  });
+});
+
+describe("notifications endpoint (mock ShopeePay)", () => {
+  test("GET /notifications memformat notifikasi pembayaran", async () => {
+    mockNotifications([
+      paymentNotif("2.786", "notif-list-1", 1790759376),
+      {
+        actionId: "act-other",
+        title: "Payout diproses",
+        content: "Payout <b>Rp1.000.000</b> telah diproses.",
+        createTime: 1790759000,
+        actionType: 1300,
+        unreadStatus: 1,
+        pcRedirectUrl: "https://partner.shopee.co.id/payout",
+      },
+    ]);
+    const res = await get("/notifications", KEY);
+    const body = await jsonOf(res);
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.notifications).toHaveLength(2);
+    expect(body.data.notifications[0].payment).toEqual({
+      transactionId: "notif-list-1",
+      amount: 2786,
+    });
+    expect(body.data.notifications[1].payment).toBeNull();
+    expect(body.data.next_cursor).toBe("999");
+  });
+
+  test("GET /notifications meneruskan error API sebagai 400", async () => {
+    mockNotifications([], true);
+    const res = await get("/notifications", KEY);
+    expect(res.status).toBe(400);
+    expect((await jsonOf(res)).success).toBe(false);
   });
 });
 

@@ -1,6 +1,10 @@
 import { state } from "../config";
 
 const BASE_URL = "https://shopeepay.shopee.co.id/merchant/v1/partner-web";
+// API notifikasi partner portal (real-time, tidak mengalami delay indexing
+// seperti get-transaction-list); memakai token "B:" yang sama.
+const NOTIF_URL =
+  "https://api.partner.shopee.co.id/nb/mss/web-api/PartnerServer/GetNotificationList";
 
 // Pool user-agent realistis untuk rotasi request
 const userAgents = [
@@ -48,6 +52,22 @@ export interface TransactionDetailResponse {
   code: number;
   msg?: string;
   data?: { issuer?: string };
+}
+
+export interface ShopeeNotification {
+  actionId: string;
+  title: string;
+  content: string;
+  createTime: number;
+  actionType: number;
+  unreadStatus: number;
+  pcRedirectUrl?: string;
+}
+
+export interface NotificationListResponse {
+  code?: number;
+  msg?: string;
+  data?: { list?: ShopeeNotification[]; cursor?: string | number };
 }
 
 function buildHeaders(): Record<string, string> {
@@ -100,6 +120,25 @@ export async function callShopeeDetailAPI(
   });
 }
 
+export async function callShopeeNotificationAPI(
+  cursor: number | string = 0,
+  limit: number = 20,
+  token: string = state.shopeeToken,
+): Promise<NotificationListResponse> {
+  const res = await fetch(NOTIF_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Merchant-Token": token,
+      "X-Merchant-Language": "id",
+      "X-Merchant-Timezone": "Asia/Jakarta",
+    },
+    body: JSON.stringify({ cursor, limit }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  return (await res.json()) as NotificationListResponse;
+}
+
 export function toWIB(date: Date): string {
   const wib = new Date(date.getTime() + 7 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -118,5 +157,38 @@ export function formatTransaction(t: ShopeeTransaction) {
     amount: parseAmount(t.amount),
     status: statusMap[t.status] ?? `unknown_${t.status}`,
     time: toWIB(new Date(t.createTime * 1000)),
+  };
+}
+
+/** actionType 1219 = "Pembayaran sebesar Rp X diterima" pada transaksi <id>. */
+const PAYMENT_RECEIVED_ACTION_TYPE = 1219;
+
+export interface ParsedPaymentNotification {
+  transactionId: string;
+  amount: number;
+  title: string;
+  createTime: number;
+  source: "notification";
+}
+
+/**
+ * Ubah notifikasi "pembayaran diterima" menjadi entri setara transaksi.
+ * Mengembalikan null untuk jenis notifikasi lain (payout, promo, dll).
+ */
+export function parsePaymentNotification(
+  n: ShopeeNotification,
+): ParsedPaymentNotification | null {
+  if (n.actionType !== PAYMENT_RECEIVED_ACTION_TYPE) return null;
+
+  const idMatch = n.pcRedirectUrl?.match(/[?&]transactionId=([^&]+)/);
+  const titleMatch = n.title.match(/Rp\s?([\d.,]+)/);
+  if (!idMatch || !titleMatch) return null;
+
+  return {
+    transactionId: idMatch[1],
+    amount: parseAmount(titleMatch[1]),
+    title: n.title,
+    createTime: n.createTime,
+    source: "notification",
   };
 }

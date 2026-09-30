@@ -7,8 +7,10 @@ import { generateDynamicQRIS } from "./lib/qris";
 import {
   callShopeeAPI,
   callShopeeDetailAPI,
+  callShopeeNotificationAPI,
   formatTransaction,
   parseAmount,
+  parsePaymentNotification,
   toWIB,
   type ShopeeTransaction,
 } from "./lib/shopee";
@@ -195,6 +197,55 @@ const protectedRoutes = new Elysia()
     }
   })
 
+  .get("/notifications", async ({ query, request, set }) => {
+    const cursor = query.cursor || 0;
+    const limit = Number(query.limit) || 20;
+    const reqToken = getReqToken(request.headers);
+
+    try {
+      const result = await callShopeeNotificationAPI(cursor, limit, reqToken);
+      if (!result || result.code) {
+        set.status = 400;
+        return {
+          success: false,
+          error: result?.msg || `Notification API error ${result?.code ?? "unknown"}`,
+        };
+      }
+
+      const notifications = [];
+      for (const n of result.data?.list ?? []) {
+        const payment = parsePaymentNotification(n);
+        notifications.push({
+          id: n.actionId,
+          title: n.title,
+          content: n.content,
+          time: toWIB(new Date(n.createTime * 1000)),
+          unread: n.unreadStatus === 1,
+          payment: payment
+            ? { transactionId: payment.transactionId, amount: payment.amount }
+            : null,
+        });
+      }
+
+      return {
+        success: true,
+        data: {
+          notifications,
+          next_cursor: result.data?.cursor ?? null,
+        },
+      };
+    } catch (err) {
+      set.status = 500;
+      return { success: false, error: (err as Error).message };
+    }
+  }, {
+    query: t.Object({
+      cursor: t.Optional(t.String()),
+      limit: t.Optional(t.Numeric()),
+      api_key: t.Optional(t.String()),
+    }),
+  })
+
   .post("/check-payment", async ({ body, request, set }) => {
     const { amount } = body;
     const reqToken = getReqToken(request.headers);
@@ -207,6 +258,44 @@ const protectedRoutes = new Elysia()
     );
 
     try {
+      // ── Sumber 1: notifikasi partner portal (real-time, tanpa delay indexing) ──
+      try {
+        const notif = await callShopeeNotificationAPI(0, 30, reqToken);
+        const notifList = notif.data?.list ?? [];
+        const match = notifList
+          .map(parsePaymentNotification)
+          .find((p) => p !== null && p.amount === amount && p.createTime >= startUnix);
+
+        if (match) {
+          const transactionId = match.transactionId;
+
+          // Anti double-claim: abaikan transaksi yang sudah pernah diklaim (24 jam)
+          if (isClaimed(transactionId)) {
+            logEvent("WARN", `Transaksi ${transactionId} sudah pernah diklaim, diabaikan.`);
+            return { success: true, paid: false };
+          }
+
+          claim(transactionId);
+          logEvent("INFO", `Pembayaran lunas via notifikasi (${transactionId}).`);
+
+          return {
+            success: true,
+            paid: true,
+            source: "notification",
+            transaction: {
+              transactionId,
+              amount: match.amount,
+              status: "success",
+              time: toWIB(new Date(match.createTime * 1000)),
+              issuer: "QRIS / ShopeePay",
+            },
+          };
+        }
+      } catch (err) {
+        logEvent("WARN", `Sumber notifikasi gagal, fallback ke transaction list: ${(err as Error).message}`);
+      }
+
+      // ── Sumber 2 (fallback): get-transaction-list ─────────────────────────────
       const result = await callShopeeAPI(startUnix, nowUnix, 50, "", reqToken);
       if (!result) {
         set.status = 500;
